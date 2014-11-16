@@ -5,7 +5,7 @@ from httplib import HTTPConnection
 from httplib import HTTPSConnection
 from urllib import urlencode
 
-import email.mime, email.mime.multipart, email.mime.application, email.mime.text
+import email, email.mime, email.mime.base, email.mime.multipart, email.mime.application, email.mime.text
 
 from ConfigParser import ConfigParser
 
@@ -134,7 +134,7 @@ class PfSenseAPI( object ):
             conn.request( 'GET',  self.__buildGETUrl( url, apiData ), headers=self.__insertCookies( headers ) )
         elif method == 'POST':
             finalHeaders = self.__insertCookies( headers )
-            
+
             if formParser.formEncoding == "application/x-www-form-urlencoded":
                 headers[ "Content-type" ] = formParser.formEncoding
                 postEncoded = urlencode( apiData )
@@ -144,14 +144,22 @@ class PfSenseAPI( object ):
                 # Multipart
                 mime = email.mime.multipart.MIMEMultipart( 'form-data' )
                 for (name, data) in apiData.items():
-                    attachment = email.mime.text.MIMEText( data, 'plain' )
+                    if isinstance( data, email.mime.base.MIMEBase ):
+                        attachment = data
+                    else:
+                        attachment = email.mime.text.MIMEText( data, 'plain' )
 
-                    attachment.add_header('Content-Disposition', 'form-data', name=name )
+                    if attachment.get_param( 'filename' ):
+                        attachment.add_header('Content-Disposition', 'form-data', name=name, filename=attachment.get_param( 'filename' ) )
+                        attachment.del_param( 'filename' )
+                    else:
+                        attachment.add_header('Content-Disposition', 'form-data', name=name )
 
                     mime.attach( attachment )
 
                 body = mime.as_string()
-                headers[ "Content-type" ] =  mime.get( 'Content-type' )
+                # Content-type from mime now has the embedded boundary tag that is required for the multipart stuff to work
+                headers[ "Content-type" ] = mime.get( 'Content-type' )
                 conn.request( 'POST', url, headers=finalHeaders, body=body )
 
         else:
